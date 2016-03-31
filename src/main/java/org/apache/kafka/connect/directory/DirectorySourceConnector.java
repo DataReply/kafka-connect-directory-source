@@ -4,11 +4,10 @@ import org.apache.kafka.common.utils.AppInfoParser;
 import org.apache.kafka.connect.connector.Task;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.source.SourceConnector;
+import org.apache.kafka.connect.util.ConnectorUtils;
+import org.apache.kafka.connect.utils.StringUtils;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 
 /**
@@ -18,12 +17,12 @@ import java.util.Map;
  * @author Sergio Spinatelli
  */
 public class DirectorySourceConnector extends SourceConnector {
-    public static final String DIR_PATH = "tmp.path";
+    public static final String DIR_PATH = "directories.paths";
     public static final String CHCK_DIR_MS = "check.dir.ms";
     public static final String SCHEMA_NAME = "schema.name";
     public static final String TOPIC = "topic";
 
-    private String tmp_path;
+    private String directories;
     private String check_dir_ms;
     private String schema_name;
     private String topic;
@@ -55,9 +54,9 @@ public class DirectorySourceConnector extends SourceConnector {
         if (topic == null || topic.isEmpty())
             throw new ConnectException("missing topic");
 
-        tmp_path = props.get(DIR_PATH);
-        if (tmp_path == null || tmp_path.isEmpty())
-            throw new ConnectException("missing tmp.path");
+        directories = props.get(DIR_PATH);
+        if (directories == null || directories.isEmpty())
+            throw new ConnectException("missing directories");
 
         check_dir_ms = props.get(CHCK_DIR_MS);
         if (check_dir_ms == null || check_dir_ms.isEmpty())
@@ -86,12 +85,13 @@ public class DirectorySourceConnector extends SourceConnector {
     @Override
     public List<Map<String, String>> taskConfigs(int maxTasks) {
         ArrayList<Map<String, String>> configs = new ArrayList<>();
-        for (int i = 0; i < maxTasks; i++) {
+        List<String> dirs = Arrays.asList(directories.split(","));
+        for (int i = 0; i < dirs.size(); i++) {
             Map<String, String> config = new HashMap<>();
-            config.put(DIR_PATH, tmp_path);
             config.put(CHCK_DIR_MS, check_dir_ms);
             config.put(SCHEMA_NAME, schema_name);
             config.put(TOPIC, topic);
+            config.put(DIR_PATH, dirs.get(i));
             configs.add(config);
         }
         return configs;

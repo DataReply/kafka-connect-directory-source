@@ -13,7 +13,7 @@ mvn package
 name=directory-source
 connector.class=org.apache.kafka.connect.directory.DirectorySourceConnector
 tasks.max=1
-tmp.path=./tmp
+directories.paths=./tmp1,./tmp2,./tmp3
 check.dir.ms=1000
 schema.name=directory_schema
 topic=directory_topic
