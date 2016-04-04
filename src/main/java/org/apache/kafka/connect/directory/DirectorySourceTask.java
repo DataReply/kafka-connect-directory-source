@@ -12,10 +12,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.nio.channels.FileLock;
 import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.util.*;
@@ -40,6 +41,7 @@ public class DirectorySourceTask extends SourceTask {
     private String topic;
     private String check_dir_ms;
     Long offset = null;
+    private Set<File> retries = new HashSet<>();
 
 
     @Override
@@ -100,14 +102,30 @@ public class DirectorySourceTask extends SourceTask {
     public List<SourceRecord> poll() throws InterruptException {
 
         List<SourceRecord> records = new ArrayList<>();
+        Queue<File> queue = ((DirWatcher) task).getFilesQueue();
         //consume here the pool
-        while (!((DirWatcher) task).getQueueFiles().isEmpty()) {
-            File file = ((DirWatcher) task).getQueueFiles().poll();
-            // creates the record
-            // no need to save offsets
-            SourceRecord record = createUpdateRecord(file);
-            records.add(record);
+        while (!queue.isEmpty()) {
+            File file = queue.poll();
+            try {
+                RandomAccessFile in = new RandomAccessFile(file, "rw");
+                FileLock lock = null;
+                try {
+                    lock = in.getChannel().lock();
+                    SourceRecord record = createUpdateRecord(file);
+                    records.add(record);
+                    lock.release();
+                } catch(Exception ex) {
+                    retries.add(file);
+                    lock.release();
+                } finally {
+                    in.close();
+                }
+            } catch(Exception ex) {
+                retries.add(file);
+            }
         }
+        queue.addAll(retries);
+        retries.clear();
 
         return records;
     }

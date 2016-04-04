@@ -27,7 +27,7 @@ public abstract class DirWatcher extends TimerTask {
     private String path;
     private File filesArray[];
     private DirFilterWatcher dfw;
-    private ConcurrentLinkedQueue<File> queue_files;
+    private ConcurrentLinkedQueue<File> filesQueue;
     FileTime lastUpdate = null;
     FileTime maxTimestamp = null;
 
@@ -41,7 +41,7 @@ public abstract class DirWatcher extends TimerTask {
         this.path = path;
         dfw = new DirFilterWatcher(filter);
 
-        queue_files = new ConcurrentLinkedQueue<File>();
+        filesQueue = new ConcurrentLinkedQueue<File>();
     }
 
     /**
@@ -67,13 +67,6 @@ public abstract class DirWatcher extends TimerTask {
             boolean hasUpdate = (fa.isRegularFile() && (lastUpdate == null || changed.compareTo(lastUpdate) > 0));
             if (maxTimestamp == null || changed.compareTo(maxTimestamp) > 0)
                 maxTimestamp = changed;
-//            log.warn("====START===");
-//            log.warn("File: {}", path.toString());
-//            log.warn("Has update {}", hasUpdate);
-//            if (lastUpdate != null) {
-//                log.warn("last update {}", lastUpdate.toString());
-//            }
-//            log.warn("====END===");
             return hasUpdate;
         } catch (IOException e) {
         }
@@ -85,6 +78,7 @@ public abstract class DirWatcher extends TimerTask {
      * Run the thread.
      */
     public final void run() {
+        log.warn("RUN!");
         try {
             filesArray = Files.walk(Paths.get(path))
                     .sorted((o1, o2) -> {
@@ -99,7 +93,7 @@ public abstract class DirWatcher extends TimerTask {
                     .filter(this::hasUpdate).map(Path::toFile)
                     .toArray(File[]::new);
             lastUpdate = maxTimestamp;
-            queue_files.addAll(Arrays.asList(filesArray));
+            filesQueue.addAll(Arrays.asList(filesArray));
             for (File f: filesArray) {
                 onChange(f, "NEW OR MODIFIED");
             }
@@ -111,8 +105,8 @@ public abstract class DirWatcher extends TimerTask {
     /**
      * Expose the files queue
      */
-    public ConcurrentLinkedQueue<File> getQueueFiles() {
-        return queue_files;
+    public ConcurrentLinkedQueue<File> getFilesQueue() {
+        return filesQueue;
     }
 
     protected abstract void onChange(File file, String action);

@@ -76,7 +76,7 @@ public class DirectorySourceConnector extends SourceConnector {
 
 
     /**
-     * Returns a set of configurations for the Task based on the current configuration.
+     * Returns a set of configurations for the Tasks based on the current configuration.
      * It always creates a single set of configurations.
      *
      * @param maxTasks maximum number of configurations to generate
