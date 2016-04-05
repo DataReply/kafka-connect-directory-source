@@ -15,13 +15,6 @@ public class DirWatcherTest {
 
     @Before
     public void setup() throws IOException {
-        DirWatcher task = new DirWatcher("D:/workdir/development/man/test/samba", "") {
-            protected void onChange(File file, String action) {
-                // here we code the action on a change
-                System.out.println
-                        ("File " + file.getName() + " action: " + action);
-            }
-        };
     }
 
     @Test

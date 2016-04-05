@@ -71,7 +71,7 @@ public class DirectorySourceTask extends SourceTask {
 
         loadOffsets();
 
-        task = new DirWatcher(tmp_path, "", offset == null ? null : FileTime.fromMillis(offset)) {
+        task = new DirWatcher(context.offsetStorageReader(), tmp_path, "", offset == null ? null : FileTime.fromMillis(offset)) {
             protected void onChange(File file, String action) {
                 // here we code the action on a change
                 System.out.println
@@ -111,48 +111,69 @@ public class DirectorySourceTask extends SourceTask {
                 FileLock lock = null;
                 try {
                     lock = in.getChannel().lock();
-                    SourceRecord record = createUpdateRecord(file);
-                    records.add(record);
+                    records.addAll(createUpdateRecord(file));
                     lock.release();
                 } catch(Exception ex) {
                     retries.add(file);
+                    records.add(createPendingRecord(file));
                     lock.release();
                 } finally {
                     in.close();
                 }
             } catch(Exception ex) {
                 retries.add(file);
+                records.add(createPendingRecord(file));
             }
         }
-        queue.addAll(retries);
-        retries.clear();
+        if (retries.size() > 0) {
+            queue.addAll(retries);
+            retries.clear();
+        }
 
         return records;
     }
 
+    private SourceRecord createPendingRecord(File file) {
+        // creates the structured message
+        Struct messageStruct = new Struct(schema);
+        messageStruct.put("name", file.getName());
+        messageStruct.put("path", file.getPath());
+        messageStruct.put("event", "pending");
+        messageStruct.put("state", "pending");
+        return new SourceRecord(Collections.singletonMap(file.toString(), "state"), Collections.singletonMap("pending", "yes"), topic, messageStruct.schema(), messageStruct);
+    }
 
     /**
      * Create a new SourceRecord from a File
      *
      * @return a source records
      */
-    private SourceRecord createUpdateRecord(File file) {
+    private List<SourceRecord> createUpdateRecord(File file) {
+        List<SourceRecord> recs = new ArrayList<>();
         // creates the structured message
         Struct messageStruct = new Struct(schema);
         messageStruct.put("name", file.getName());
         messageStruct.put("path", file.getPath());
+        messageStruct.put("event", "committed");
+        messageStruct.put("state", "pending");
+        recs.add(new SourceRecord(Collections.singletonMap(file.toString(), "state"), Collections.singletonMap("committed", "yes"), topic, messageStruct.schema(), messageStruct));
+
         try {
             BasicFileAttributes fa = Files.readAttributes(file.toPath(), BasicFileAttributes.class);
             FileTime lastMod = fa.lastModifiedTime();
             FileTime created = fa.lastAccessTime();
 
+            messageStruct = new Struct(schema);
+            messageStruct.put("name", file.getName());
+            messageStruct.put("path", file.getPath());
             messageStruct.put("event", lastMod.compareTo(created) <= 0 ? "CREATED" : "MODIFIED");
+            messageStruct.put("state", "committed");
             // creates the record
             // no need to save offsets
-            return new SourceRecord(offsetKey(), offsetValue(lastMod.compareTo(created) > 0 ? lastMod : created), topic, messageStruct.schema(), messageStruct);
+            recs.add(new SourceRecord(offsetKey(), offsetValue(lastMod.compareTo(created) > 0 ? lastMod : created), topic, messageStruct.schema(), messageStruct));
         } catch (IOException e) {
         }
-        return null;
+        return recs;
     }
 
     private Map<String, String> offsetKey() {

@@ -1,5 +1,6 @@
 package org.apache.kafka.connect.utils;
 
+import org.apache.kafka.connect.storage.OffsetStorageReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,6 +25,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  */
 public abstract class DirWatcher extends TimerTask {
     private final static Logger log = LoggerFactory.getLogger(DirWatcher.class);
+    private final OffsetStorageReader offsetStorageReader;
     private String path;
     private File filesArray[];
     private DirFilterWatcher dfw;
@@ -37,9 +39,10 @@ public abstract class DirWatcher extends TimerTask {
      * @param path directory path to watch
      * @param filter detect changes only for filtered extensions
      **/
-    public DirWatcher(String path, String filter) {
+    public DirWatcher(OffsetStorageReader offsetStorageReader, String path, String filter) {
         this.path = path;
         dfw = new DirFilterWatcher(filter);
+        this.offsetStorageReader = offsetStorageReader;
 
         filesQueue = new ConcurrentLinkedQueue<File>();
     }
@@ -51,8 +54,8 @@ public abstract class DirWatcher extends TimerTask {
      * @param filter detect changes only for filtered extensions
      * @param path directory path to watch
      **/
-    public DirWatcher(String path, String filter, FileTime lastUpdate) {
-        this(path, filter);
+    public DirWatcher(OffsetStorageReader offsetStorageReader, String path, String filter, FileTime lastUpdate) {
+        this(offsetStorageReader, path, filter);
         this.lastUpdate = lastUpdate;
         this.maxTimestamp = lastUpdate;
     }
@@ -64,7 +67,7 @@ public abstract class DirWatcher extends TimerTask {
             BasicFileAttributes fa = Files.readAttributes(path, BasicFileAttributes.class, options);
             FileTime changed = Files.readAttributes(path, BasicFileAttributes.class, options).lastAccessTime();
 
-            boolean hasUpdate = (fa.isRegularFile() && (lastUpdate == null || changed.compareTo(lastUpdate) > 0));
+            boolean hasUpdate = (fa.isRegularFile() && (lastUpdate == null || changed.compareTo(lastUpdate) > 0 || isPending(path)));
             if (maxTimestamp == null || changed.compareTo(maxTimestamp) > 0)
                 maxTimestamp = changed;
             return hasUpdate;
@@ -73,12 +76,15 @@ public abstract class DirWatcher extends TimerTask {
         return false;
     }
 
+    private boolean isPending(Path path) {
+        Map<String, Object> offset = offsetStorageReader.offset(Collections.singletonMap(path.toString(), "state"));
+        return (offset != null && offset.containsKey("pending") && !offset.containsKey("committed"));
+    }
 
     /**
      * Run the thread.
      */
     public final void run() {
-        log.warn("RUN!");
         try {
             filesArray = Files.walk(Paths.get(path))
                     .sorted((o1, o2) -> {
@@ -92,8 +98,8 @@ public abstract class DirWatcher extends TimerTask {
                     })
                     .filter(this::hasUpdate).map(Path::toFile)
                     .toArray(File[]::new);
-            lastUpdate = maxTimestamp;
             filesQueue.addAll(Arrays.asList(filesArray));
+            lastUpdate = maxTimestamp;
             for (File f: filesArray) {
                 onChange(f, "NEW OR MODIFIED");
             }
