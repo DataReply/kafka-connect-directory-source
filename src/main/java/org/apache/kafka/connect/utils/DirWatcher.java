@@ -30,6 +30,7 @@ public abstract class DirWatcher extends TimerTask {
     private ConcurrentLinkedQueue<File> filesQueue;
     FileTime lastUpdate = null;
     FileTime maxTimestamp = null;
+    private Map<File, Boolean> retried = new HashMap<>();
 
     /**
      * Constructor of the class.
@@ -63,8 +64,8 @@ public abstract class DirWatcher extends TimerTask {
         try {
             BasicFileAttributes fa = Files.readAttributes(path, BasicFileAttributes.class, options);
             FileTime changed = Files.readAttributes(path, BasicFileAttributes.class, options).lastAccessTime();
-
-            boolean hasUpdate = (fa.isRegularFile() && (lastUpdate == null || changed.compareTo(lastUpdate) > 0));
+            Boolean ret = retried.get(path.toFile());
+            boolean hasUpdate = (fa.isRegularFile() && (lastUpdate == null || changed.compareTo(lastUpdate) > 0) && (ret == null || (ret != null && !ret)));
             if (maxTimestamp == null || changed.compareTo(maxTimestamp) > 0)
                 maxTimestamp = changed;
             return hasUpdate;
@@ -73,12 +74,19 @@ public abstract class DirWatcher extends TimerTask {
         return false;
     }
 
+    public void retry(File f) {
+        retried.put(f, false);
+    }
+    public void retried(File f) {
+        if (retried.containsKey(f))
+            retried.put(f, true);
+    }
 
     /**
      * Run the thread.
      */
     public final void run() {
-        log.warn("RUN!");
+        log.warn("RUNNING WATCHER");
         try {
             filesArray = Files.walk(Paths.get(path))
                     .sorted((o1, o2) -> {
@@ -94,6 +102,9 @@ public abstract class DirWatcher extends TimerTask {
                     .toArray(File[]::new);
             lastUpdate = maxTimestamp;
             filesQueue.addAll(Arrays.asList(filesArray));
+            for (File f: retried.keySet())
+                if (retried.get(f))
+                    filesQueue.add(f);
             for (File f: filesArray) {
                 onChange(f, "NEW OR MODIFIED");
             }
@@ -110,4 +121,12 @@ public abstract class DirWatcher extends TimerTask {
     }
 
     protected abstract void onChange(File file, String action);
+
+    public File poll() {
+        return filesQueue.poll();
+    }
+
+    public boolean isEmpty() {
+        return filesQueue.isEmpty();
+    }
 }

@@ -41,7 +41,6 @@ public class DirectorySourceTask extends SourceTask {
     private String topic;
     private String check_dir_ms;
     Long offset = null;
-    private Set<File> retries = new HashSet<>();
 
 
     @Override
@@ -102,10 +101,11 @@ public class DirectorySourceTask extends SourceTask {
     public List<SourceRecord> poll() throws InterruptException {
 
         List<SourceRecord> records = new ArrayList<>();
-        Queue<File> queue = ((DirWatcher) task).getFilesQueue();
+        DirWatcher watcher = ((DirWatcher) task);
         //consume here the pool
-        while (!queue.isEmpty()) {
-            File file = queue.poll();
+        if (!watcher.isEmpty()) {
+            File file = watcher.poll();
+            log.warn("PROCESSING {}", file.getName());
             try {
                 RandomAccessFile in = new RandomAccessFile(file, "rw");
                 FileLock lock = null;
@@ -114,18 +114,18 @@ public class DirectorySourceTask extends SourceTask {
                     SourceRecord record = createUpdateRecord(file);
                     records.add(record);
                     lock.release();
+                    watcher.retried(file);
                 } catch(Exception ex) {
-                    retries.add(file);
+                    watcher.retry(file);
                     lock.release();
                 } finally {
                     in.close();
                 }
             } catch(Exception ex) {
-                retries.add(file);
+                watcher.retry(file);
+                // sned pending record
             }
         }
-        queue.addAll(retries);
-        retries.clear();
 
         return records;
     }
