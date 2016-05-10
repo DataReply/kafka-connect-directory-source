@@ -88,6 +88,7 @@ public class DirectorySourceTask extends SourceTask {
                 .field("name", Schema.OPTIONAL_STRING_SCHEMA)
                 .field("path", Schema.OPTIONAL_STRING_SCHEMA)
                 .field("event", Schema.OPTIONAL_STRING_SCHEMA)
+                .field("state", Schema.OPTIONAL_STRING_SCHEMA)
                 .build();
     }
 
